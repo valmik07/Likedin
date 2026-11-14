@@ -9,36 +9,74 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: likedin-android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build Likedin ARM64 APK
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      DIAGNOSTICS_DIR: ${{ github.workspace }}/diagnostics
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract Likedin project
+      - name: Prepare diagnostics
+        shell: bash
+        run: mkdir -p "$DIAGNOSTICS_DIR"
+
+      - name: Extract and validate Likedin project
         shell: bash
         run: |
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
+          set -euo pipefail
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "Project ZIP not found"
+          mapfile -t ZIP_FILES < <(
+            find . -maxdepth 1 -type f -iname '*.zip' -print
+          )
+
+          if [ "${#ZIP_FILES[@]}" -ne 1 ]; then
+            echo "Expected exactly one project ZIP, found ${#ZIP_FILES[@]}"
+            printf '%s\n' "${ZIP_FILES[@]}"
             exit 1
           fi
 
-          mkdir source
+          ZIP_FILE="${ZIP_FILES[0]}"
+          echo "Using project archive: $ZIP_FILE"
+
+          mkdir -p source
+          unzip -t "$ZIP_FILE"
           unzip -q "$ZIP_FILE" -d source
 
-          PROJECT_FILE=$(find source -name pubspec.yaml -type f | head -n 1)
+          mapfile -t PROJECT_FILES < <(
+            find source -name pubspec.yaml -type f
+          )
 
-          if [ -z "$PROJECT_FILE" ]; then
-            echo "pubspec.yaml not found"
+          if [ "${#PROJECT_FILES[@]}" -ne 1 ]; then
+            echo "Expected exactly one pubspec.yaml, found ${#PROJECT_FILES[@]}"
+            printf '%s\n' "${PROJECT_FILES[@]}"
             exit 1
           fi
 
-          echo "PROJECT_DIR=$(dirname "$PROJECT_FILE")" >> "$GITHUB_ENV"
+          PROJECT_DIR="$(dirname "${PROJECT_FILES[0]}")"
+          PROJECT_DIR="$(realpath "$PROJECT_DIR")"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project directory: $PROJECT_DIR"
+
+          if [ ! -d "$PROJECT_DIR/android" ]; then
+            echo "Android project directory is missing."
+            exit 1
+          fi
+
+          if [ ! -f "$PROJECT_DIR/pubspec.yaml" ]; then
+            echo "pubspec.yaml is missing."
+            exit 1
+          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -46,19 +84,30 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle caching
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Locate Android SDK Manager
         shell: bash
         run: |
+          set -euo pipefail
+
           SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
 
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
 
-          SDKMANAGER=$(find "$SDK_ROOT" -type f -name sdkmanager | head -n 1)
+          SDKMANAGER=$(
+            find "$SDK_ROOT" \
+              -type f \
+              -path '*/cmdline-tools/*/bin/sdkmanager' \
+              | sort -V \
+              | tail -n 1
+          )
 
           if [ -z "$SDKMANAGER" ]; then
             echo "SDK Manager not found."
-            find "$SDK_ROOT" -maxdepth 4 -type d || true
+            find "$SDK_ROOT" -maxdepth 5 -type d || true
             exit 1
           fi
 
@@ -71,6 +120,8 @@ jobs:
       - name: Install Android API 36
         shell: bash
         run: |
+          set -euo pipefail
+
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
 
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
@@ -85,40 +136,82 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Check Flutter
-        run: flutter doctor -v
+      - name: Check environment
+        shell: bash
+        run: |
+          flutter --version
+          dart --version
+          java -version
+          flutter doctor -v
 
       - name: Get dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: flutter pub get
 
-      - name: Analyze
+      - name: Analyze source
         working-directory: ${{ env.PROJECT_DIR }}
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Run tests
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter test
+        run: flutter test --reporter expanded
 
       - name: Build ARM64 Release APK
         working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
         run: |
-          flutter build apk --release --target-platform android-arm64 --verbose 2>&1 | tee build-log.txt
-          BUILD_STATUS=${PIPESTATUS[0]}
-          exit $BUILD_STATUS
+          set -euo pipefail
 
-      - name: Upload diagnostic log
+          flutter build apk \
+            --release \
+            --target-platform android-arm64 \
+            --verbose \
+            2>&1 | tee "$DIAGNOSTICS_DIR/build-log.txt"
+
+      - name: Collect build metadata
+        if: always()
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          mkdir -p "$DIAGNOSTICS_DIR"
+
+          {
+            echo "Commit: $GITHUB_SHA"
+            echo "Branch: $GITHUB_REF_NAME"
+            echo "Flutter:"
+            flutter --version || true
+            echo
+            echo "Java:"
+            java -version 2>&1 || true
+            echo
+
+            APK="build/app/outputs/flutter-apk/app-release.apk"
+
+            if [ -f "$APK" ]; then
+              echo "APK size:"
+              du -h "$APK"
+              echo
+              echo "APK SHA256:"
+              sha256sum "$APK"
+            else
+              echo "APK was not generated."
+            fi
+          } > "$DIAGNOSTICS_DIR/build-metadata.txt"
+
+      - name: Upload diagnostic files
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: likedin-build-log
-          path: ${{ env.PROJECT_DIR }}/build-log.txt
+          name: likedin-build-diagnostics
+          path: ${{ env.DIAGNOSTICS_DIR }}/
           if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload ARM64 APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: likedin-arm64-release
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
