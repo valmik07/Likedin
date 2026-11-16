@@ -188,56 +188,6 @@ jobs:
             2>&1 | tee "$DIAGNOSTICS_DIR/flutter-doctor.txt" || true
 
       # --------------------------------------------------
-      # 7. RESTORE PERMANENT RELEASE SIGNING KEY
-      # --------------------------------------------------
-      - name: Restore persistent release signing key
-        working-directory: ${{ env.PROJECT_DIR }}
-        shell: bash
-        env:
-          LIKEDIN_KEYSTORE_B64: ${{ secrets.LIKEDIN_KEYSTORE_B64 }}
-          LIKEDIN_STORE_PASSWORD: ${{ secrets.LIKEDIN_STORE_PASSWORD }}
-          LIKEDIN_KEY_ALIAS: ${{ secrets.LIKEDIN_KEY_ALIAS }}
-          LIKEDIN_KEY_PASSWORD: ${{ secrets.LIKEDIN_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          umask 077
-
-          : "${LIKEDIN_KEYSTORE_B64:?Missing LIKEDIN_KEYSTORE_B64}"
-          : "${LIKEDIN_STORE_PASSWORD:?Missing LIKEDIN_STORE_PASSWORD}"
-          : "${LIKEDIN_KEY_ALIAS:?Missing LIKEDIN_KEY_ALIAS}"
-          : "${LIKEDIN_KEY_PASSWORD:?Missing LIKEDIN_KEY_PASSWORD}"
-
-          KEYSTORE_FILE="android/app/likedin-release.jks"
-
-          mkdir -p android/app
-
-          printf '%s' "$LIKEDIN_KEYSTORE_B64" \
-            | base64 --decode > "$KEYSTORE_FILE"
-
-          if [ ! -s "$KEYSTORE_FILE" ]; then
-            echo "Keystore file is empty."
-            exit 1
-          fi
-
-          chmod 600 "$KEYSTORE_FILE"
-
-          # Verify that the keystore password and alias work.
-          keytool -list \
-            -keystore "$KEYSTORE_FILE" \
-            -storepass "$LIKEDIN_STORE_PASSWORD" \
-            -alias "$LIKEDIN_KEY_ALIAS" \
-            > "$DIAGNOSTICS_DIR/keystore-validation.txt"
-
-          {
-            printf 'storeFile=likedin-release.jks\n'
-            printf 'storePassword=%s\n' "$LIKEDIN_STORE_PASSWORD"
-            printf 'keyAlias=%s\n' "$LIKEDIN_KEY_ALIAS"
-            printf 'keyPassword=%s\n' "$LIKEDIN_KEY_PASSWORD"
-          } > android/key.properties
-
-          chmod 600 android/key.properties
-
-          echo "Persistent release signing key restored and validated."
 
       # --------------------------------------------------
       # 8. DEPENDENCIES
