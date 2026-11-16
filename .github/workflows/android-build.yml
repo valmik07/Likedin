@@ -1,4 +1,3 @@
-
 name: Likedin Android APK
 
 on:
@@ -15,7 +14,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Likedin ARM64 APK
+    name: Build Likedin ARM64 Release APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -23,13 +22,21 @@ jobs:
       DIAGNOSTICS_DIR: ${{ github.workspace }}/diagnostics
 
     steps:
+      # --------------------------------------------------
+      # 1. CHECKOUT
+      # --------------------------------------------------
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Prepare diagnostics
         shell: bash
-        run: mkdir -p "$DIAGNOSTICS_DIR"
+        run: |
+          set -euo pipefail
+          mkdir -p "$DIAGNOSTICS_DIR"
 
+      # --------------------------------------------------
+      # 2. EXTRACT AND VALIDATE PROJECT ZIP
+      # --------------------------------------------------
       - name: Extract and validate Likedin project
         shell: bash
         run: |
@@ -40,24 +47,28 @@ jobs:
           )
 
           if [ "${#ZIP_FILES[@]}" -ne 1 ]; then
-            echo "Expected exactly one project ZIP, found ${#ZIP_FILES[@]}"
+            echo "Expected exactly one project ZIP."
+            echo "Found: ${#ZIP_FILES[@]}"
             printf '%s\n' "${ZIP_FILES[@]}"
             exit 1
           fi
 
           ZIP_FILE="${ZIP_FILES[0]}"
+
           echo "Using project archive: $ZIP_FILE"
 
           mkdir -p source
+
           unzip -t "$ZIP_FILE"
           unzip -q "$ZIP_FILE" -d source
 
           mapfile -t PROJECT_FILES < <(
-            find source -name pubspec.yaml -type f
+            find source -type f -name pubspec.yaml
           )
 
           if [ "${#PROJECT_FILES[@]}" -ne 1 ]; then
-            echo "Expected exactly one pubspec.yaml, found ${#PROJECT_FILES[@]}"
+            echo "Expected exactly one pubspec.yaml."
+            echo "Found: ${#PROJECT_FILES[@]}"
             printf '%s\n' "${PROJECT_FILES[@]}"
             exit 1
           fi
@@ -66,6 +77,7 @@ jobs:
           PROJECT_DIR="$(realpath "$PROJECT_DIR")"
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
           echo "Project directory: $PROJECT_DIR"
 
           if [ ! -d "$PROJECT_DIR/android" ]; then
@@ -78,21 +90,40 @@ jobs:
             exit 1
           fi
 
+          if [ ! -f "$PROJECT_DIR/android/app/build.gradle.kts" ]; then
+            echo "Android app Gradle configuration is missing."
+            exit 1
+          fi
+
+      # --------------------------------------------------
+      # 3. JAVA
+      # --------------------------------------------------
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
+      # --------------------------------------------------
+      # 4. GRADLE CACHE
+      # --------------------------------------------------
       - name: Set up Gradle caching
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
+      # --------------------------------------------------
+      # 5. ANDROID SDK
+      # --------------------------------------------------
       - name: Locate Android SDK Manager
         shell: bash
         run: |
           set -euo pipefail
 
           SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+
+          if [ ! -d "$SDK_ROOT" ]; then
+            echo "Android SDK directory not found: $SDK_ROOT"
+            exit 1
+          fi
 
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
@@ -122,40 +153,131 @@ jobs:
         run: |
           set -euo pipefail
 
-          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
+          # Accept licenses. Keep the SDK Manager's exit
+          # status authoritative while allowing yes to close
+          # normally when the license process finishes.
+          set +o pipefail
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses
+          set -o pipefail
 
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
 
+      # --------------------------------------------------
+      # 6. FLUTTER
+      # --------------------------------------------------
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@v2.23.0
         with:
           flutter-version: '3.47.9'
           channel: stable
           cache: true
 
-      - name: Check environment
+      - name: Check build environment
         shell: bash
         run: |
+          set -euo pipefail
+
           flutter --version
           dart --version
           java -version
-          flutter doctor -v
 
-      - name: Get dependencies
+          flutter doctor -v \
+            2>&1 | tee "$DIAGNOSTICS_DIR/flutter-doctor.txt" || true
+
+      # --------------------------------------------------
+      # 7. RESTORE PERMANENT RELEASE SIGNING KEY
+      # --------------------------------------------------
+      - name: Restore persistent release signing key
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter pub get
+        shell: bash
+        env:
+          LIKEDIN_KEYSTORE_B64: ${{ secrets.LIKEDIN_KEYSTORE_B64 }}
+          LIKEDIN_STORE_PASSWORD: ${{ secrets.LIKEDIN_STORE_PASSWORD }}
+          LIKEDIN_KEY_ALIAS: ${{ secrets.LIKEDIN_KEY_ALIAS }}
+          LIKEDIN_KEY_PASSWORD: ${{ secrets.LIKEDIN_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
 
+          : "${LIKEDIN_KEYSTORE_B64:?Missing LIKEDIN_KEYSTORE_B64}"
+          : "${LIKEDIN_STORE_PASSWORD:?Missing LIKEDIN_STORE_PASSWORD}"
+          : "${LIKEDIN_KEY_ALIAS:?Missing LIKEDIN_KEY_ALIAS}"
+          : "${LIKEDIN_KEY_PASSWORD:?Missing LIKEDIN_KEY_PASSWORD}"
+
+          KEYSTORE_FILE="android/app/likedin-release.jks"
+
+          mkdir -p android/app
+
+          printf '%s' "$LIKEDIN_KEYSTORE_B64" \
+            | base64 --decode > "$KEYSTORE_FILE"
+
+          if [ ! -s "$KEYSTORE_FILE" ]; then
+            echo "Keystore file is empty."
+            exit 1
+          fi
+
+          chmod 600 "$KEYSTORE_FILE"
+
+          # Verify that the keystore password and alias work.
+          keytool -list \
+            -keystore "$KEYSTORE_FILE" \
+            -storepass "$LIKEDIN_STORE_PASSWORD" \
+            -alias "$LIKEDIN_KEY_ALIAS" \
+            > "$DIAGNOSTICS_DIR/keystore-validation.txt"
+
+          {
+            printf 'storeFile=likedin-release.jks\n'
+            printf 'storePassword=%s\n' "$LIKEDIN_STORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$LIKEDIN_KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$LIKEDIN_KEY_PASSWORD"
+          } > android/key.properties
+
+          chmod 600 android/key.properties
+
+          echo "Persistent release signing key restored and validated."
+
+      # --------------------------------------------------
+      # 8. DEPENDENCIES
+      # --------------------------------------------------
+      - name: Get Flutter dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          flutter pub get \
+            2>&1 | tee "$DIAGNOSTICS_DIR/pub-get-log.txt"
+
+      # --------------------------------------------------
+      # 9. STATIC ANALYSIS
+      # --------------------------------------------------
       - name: Analyze source
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Run tests
+          flutter analyze \
+            2>&1 | tee "$DIAGNOSTICS_DIR/analyze-log.txt"
+
+      # --------------------------------------------------
+      # 10. TESTS
+      # --------------------------------------------------
+      - name: Run Flutter tests
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter test --reporter expanded
+        shell: bash
+        run: |
+          set -euo pipefail
 
+          flutter test --reporter expanded \
+            2>&1 | tee "$DIAGNOSTICS_DIR/test-log.txt"
+
+      # --------------------------------------------------
+      # 11. ARM64 RELEASE BUILD
+      # --------------------------------------------------
       - name: Build ARM64 Release APK
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
@@ -168,50 +290,123 @@ jobs:
             --verbose \
             2>&1 | tee "$DIAGNOSTICS_DIR/build-log.txt"
 
-      - name: Collect build metadata
-        if: always()
+      # --------------------------------------------------
+      # 12. VERIFY APK SIGNATURE
+      # --------------------------------------------------
+      - name: Verify release APK signature
+        if: success()
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
+          set -euo pipefail
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+
+          if [ ! -f "$APK" ]; then
+            echo "Release APK was not generated."
+            exit 1
+          fi
+
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "Android APK signer was not found."
+            exit 1
+          fi
+
+          "$APKSIGNER" verify \
+            --verbose \
+            --print-certs \
+            "$APK" \
+            2>&1 | tee "$DIAGNOSTICS_DIR/apk-signature.txt"
+
+      # --------------------------------------------------
+      # 13. BUILD METADATA
+      # --------------------------------------------------
+      - name: Collect build metadata
+        if: always()
+        shell: bash
+        run: |
+          set -u
+
           mkdir -p "$DIAGNOSTICS_DIR"
 
           {
+            echo "================================"
+            echo "LIKEDIN BUILD METADATA"
+            echo "================================"
+            echo
             echo "Commit: $GITHUB_SHA"
             echo "Branch: $GITHUB_REF_NAME"
+            echo
             echo "Flutter:"
-            flutter --version || true
+            flutter --version 2>&1 || true
+            echo
+            echo "Dart:"
+            dart --version 2>&1 || true
             echo
             echo "Java:"
             java -version 2>&1 || true
             echo
 
-            APK="build/app/outputs/flutter-apk/app-release.apk"
+            if [ -n "${PROJECT_DIR:-}" ] \
+              && [ -d "$PROJECT_DIR" ]; then
 
-            if [ -f "$APK" ]; then
-              echo "APK size:"
-              du -h "$APK"
-              echo
-              echo "APK SHA256:"
-              sha256sum "$APK"
+              APK="$PROJECT_DIR/build/app/outputs/flutter-apk/app-release.apk"
+
+              if [ -f "$APK" ]; then
+                echo "APK generated successfully."
+                echo
+                echo "APK size:"
+                du -h "$APK"
+                echo
+                echo "APK SHA256:"
+                sha256sum "$APK"
+              else
+                echo "APK was not generated."
+              fi
             else
-              echo "APK was not generated."
+              echo "Project extraction did not complete."
             fi
+
           } > "$DIAGNOSTICS_DIR/build-metadata.txt"
 
+      # --------------------------------------------------
+      # 14. UPLOAD DIAGNOSTICS
+      # --------------------------------------------------
       - name: Upload diagnostic files
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: likedin-build-diagnostics
           path: ${{ env.DIAGNOSTICS_DIR }}/
           if-no-files-found: warn
           retention-days: 14
 
+      # --------------------------------------------------
+      # 15. UPLOAD APK
+      # --------------------------------------------------
       - name: Upload ARM64 APK
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: likedin-arm64-release
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
+
+      # --------------------------------------------------
+      # 16. CLEAN UP SIGNING MATERIAL
+      # --------------------------------------------------
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -n "${PROJECT_DIR:-}" ]; then
+            rm -f \
+              "$PROJECT_DIR/android/app/likedin-release.jks" \
+              "$PROJECT_DIR/android/key.properties"
+          fi
+
+          echo "Temporary signing files removed."
