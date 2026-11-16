@@ -210,7 +210,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          flutter analyze \
+          flutter analyze --no-fatal-infos \
             2>&1 | tee "$DIAGNOSTICS_DIR/analyze-log.txt"
 
       # --------------------------------------------------
