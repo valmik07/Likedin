@@ -89,10 +89,14 @@ jobs:
             fi
           done
 
-          if ! grep -q '^version: 1\.8\.8+87$' "$PROJECT_DIR/pubspec.yaml"; then
-            echo "This workflow expects Likedin Stage 3 source version 1.8.8+87."
+          SOURCE_VERSION="$(sed -n 's/^version:[[:space:]]*//p' "$PROJECT_DIR/pubspec.yaml" | head -n 1)"
+          EXPECTED_VERSION="1.8.9+88"
+          if [ "$SOURCE_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "This workflow expects Likedin combined UI source version $EXPECTED_VERSION."
+            echo "Found source version: ${SOURCE_VERSION:-<missing>}"
             exit 1
           fi
+          echo "Validated Likedin source version: $SOURCE_VERSION"
 
       # --------------------------------------------------
       # 3. JAVA
