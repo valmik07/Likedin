@@ -90,9 +90,9 @@ jobs:
           done
 
           SOURCE_VERSION="$(sed -n 's/^version:[[:space:]]*//p' "$PROJECT_DIR/pubspec.yaml" | head -n 1)"
-          EXPECTED_VERSION="1.8.9+88"
+          EXPECTED_VERSION="1.9.0+89"
           if [ "$SOURCE_VERSION" != "$EXPECTED_VERSION" ]; then
-            echo "This workflow expects Likedin combined UI source version $EXPECTED_VERSION."
+            echo "This workflow expects Likedin gallery, Gboard media and low-memory source version $EXPECTED_VERSION."
             echo "Found source version: ${SOURCE_VERSION:-<missing>}"
             exit 1
           fi
