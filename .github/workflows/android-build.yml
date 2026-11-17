@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     name: Build Likedin ARM64 Release APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
 
     env:
@@ -26,7 +26,7 @@ jobs:
       # 1. CHECKOUT
       # --------------------------------------------------
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Prepare diagnostics
         shell: bash
@@ -47,23 +47,21 @@ jobs:
           )
 
           if [ "${#ZIP_FILES[@]}" -ne 1 ]; then
-            echo "Expected exactly one project ZIP."
+            echo "Expected exactly one project ZIP in the repository root."
             echo "Found: ${#ZIP_FILES[@]}"
             printf '%s\n' "${ZIP_FILES[@]}"
             exit 1
           fi
 
           ZIP_FILE="${ZIP_FILES[0]}"
-
           echo "Using project archive: $ZIP_FILE"
 
           mkdir -p source
-
           unzip -t "$ZIP_FILE"
           unzip -q "$ZIP_FILE" -d source
 
           mapfile -t PROJECT_FILES < <(
-            find source -type f -name pubspec.yaml
+            find source -type f -name pubspec.yaml -print
           )
 
           if [ "${#PROJECT_FILES[@]}" -ne 1 ]; then
@@ -75,23 +73,24 @@ jobs:
 
           PROJECT_DIR="$(dirname "${PROJECT_FILES[0]}")"
           PROJECT_DIR="$(realpath "$PROJECT_DIR")"
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
           echo "Project directory: $PROJECT_DIR"
 
-          if [ ! -d "$PROJECT_DIR/android" ]; then
-            echo "Android project directory is missing."
-            exit 1
-          fi
+          for required_file in \
+            "$PROJECT_DIR/pubspec.yaml" \
+            "$PROJECT_DIR/android/app/build.gradle.kts" \
+            "$PROJECT_DIR/android/settings.gradle.kts" \
+            "$PROJECT_DIR/android/gradle/wrapper/gradle-wrapper.jar" \
+            "$PROJECT_DIR/android/gradle/wrapper/gradle-wrapper.properties" \
+            "$PROJECT_DIR/android/app/google-services.json"; do
+            if [ ! -f "$required_file" ]; then
+              echo "Required project file is missing: $required_file"
+              exit 1
+            fi
+          done
 
-          if [ ! -f "$PROJECT_DIR/pubspec.yaml" ]; then
-            echo "pubspec.yaml is missing."
-            exit 1
-          fi
-
-          if [ ! -f "$PROJECT_DIR/android/app/build.gradle.kts" ]; then
-            echo "Android app Gradle configuration is missing."
+          if ! grep -q '^version: 1\.8\.8+87$' "$PROJECT_DIR/pubspec.yaml"; then
+            echo "This workflow expects Likedin Stage 3 source version 1.8.8+87."
             exit 1
           fi
 
@@ -99,7 +98,7 @@ jobs:
       # 3. JAVA
       # --------------------------------------------------
       - name: Set up Java 17
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@v6.3.0
         with:
           distribution: temurin
           java-version: '17'
@@ -108,7 +107,7 @@ jobs:
       # 4. GRADLE CACHE
       # --------------------------------------------------
       - name: Set up Gradle caching
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v6.4.1
 
       # --------------------------------------------------
       # 5. ANDROID SDK
@@ -119,7 +118,6 @@ jobs:
           set -euo pipefail
 
           SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-
           if [ ! -d "$SDK_ROOT" ]; then
             echo "Android SDK directory not found: $SDK_ROOT"
             exit 1
@@ -128,16 +126,15 @@ jobs:
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
 
-          SDKMANAGER=$(
-            find "$SDK_ROOT" \
-              -type f \
-              -path '*/cmdline-tools/*/bin/sdkmanager' \
+          SDKMANAGER="$({
+            find "$SDK_ROOT" -type f \
+              -path '*/cmdline-tools/*/bin/sdkmanager' -print \
               | sort -V \
               | tail -n 1
-          )
+          })"
 
           if [ -z "$SDKMANAGER" ]; then
-            echo "SDK Manager not found."
+            echo "SDK Manager not found under $SDK_ROOT"
             find "$SDK_ROOT" -maxdepth 5 -type d || true
             exit 1
           fi
@@ -145,17 +142,15 @@ jobs:
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
           echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
           echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
-
           echo "Found SDK Manager: $SDKMANAGER"
 
-      - name: Install Android API 36
+      - name: Install Android API 36, Build Tools and Flutter NDK
         shell: bash
         run: |
           set -euo pipefail
 
-          # Accept licenses. Keep the SDK Manager's exit
-          # status authoritative while allowing yes to close
-          # normally when the license process finishes.
+          # Keep sdkmanager's exit status authoritative; `yes` may receive
+          # SIGPIPE after sdkmanager has accepted all required licenses.
           set +o pipefail
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses
           set -o pipefail
@@ -163,7 +158,8 @@ jobs:
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
             "platform-tools" \
             "platforms;android-36" \
-            "build-tools;36.0.0"
+            "build-tools;36.0.0" \
+            "ndk;28.2.13676358"
 
       # --------------------------------------------------
       # 6. FLUTTER
@@ -179,15 +175,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           flutter --version
           dart --version
           java -version
-
-          flutter doctor -v \
-            2>&1 | tee "$DIAGNOSTICS_DIR/flutter-doctor.txt" || true
+          flutter doctor -v 2>&1 | tee "$DIAGNOSTICS_DIR/flutter-doctor.txt" || true
 
       # --------------------------------------------------
+      # 7. TEMPORARY TEST SIGNING (NO GITHUB SECRETS)
+      # --------------------------------------------------
+      # Stage 3's android/app/build.gradle.kts already selects the Android
+      # debug signing config when android/key.properties is absent.
+      # This is suitable for temporary testing, not long-term distribution.
 
       # --------------------------------------------------
       # 8. DEPENDENCIES
@@ -197,9 +195,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          flutter pub get \
-            2>&1 | tee "$DIAGNOSTICS_DIR/pub-get-log.txt"
+          flutter pub get 2>&1 | tee "$DIAGNOSTICS_DIR/pub-get-log.txt"
+          if [ -f pubspec.lock ]; then
+            cp pubspec.lock "$DIAGNOSTICS_DIR/pubspec.lock"
+            sha256sum pubspec.lock > "$DIAGNOSTICS_DIR/pubspec-lock-sha256.txt"
+          fi
 
       # --------------------------------------------------
       # 9. STATIC ANALYSIS
@@ -209,7 +209,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           flutter analyze --no-fatal-infos \
             2>&1 | tee "$DIAGNOSTICS_DIR/analyze-log.txt"
 
@@ -221,7 +220,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           flutter test --reporter expanded \
             2>&1 | tee "$DIAGNOSTICS_DIR/test-log.txt"
 
@@ -233,7 +231,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           flutter build apk \
             --release \
             --target-platform android-arm64 \
@@ -243,7 +240,7 @@ jobs:
       # --------------------------------------------------
       # 12. VERIFY APK SIGNATURE
       # --------------------------------------------------
-      - name: Verify release APK signature
+      - name: Verify APK signature
         if: success()
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
@@ -257,17 +254,15 @@ jobs:
             echo "Release APK was not generated."
             exit 1
           fi
-
           if [ ! -x "$APKSIGNER" ]; then
-            echo "Android APK signer was not found."
+            echo "Android APK signer was not found: $APKSIGNER"
             exit 1
           fi
 
-          "$APKSIGNER" verify \
-            --verbose \
-            --print-certs \
-            "$APK" \
+          "$APKSIGNER" verify --verbose --print-certs "$APK" \
             2>&1 | tee "$DIAGNOSTICS_DIR/apk-signature.txt"
+
+          echo "APK signature is structurally valid. This build uses temporary debug signing."
 
       # --------------------------------------------------
       # 13. BUILD METADATA
@@ -277,7 +272,6 @@ jobs:
         shell: bash
         run: |
           set -u
-
           mkdir -p "$DIAGNOSTICS_DIR"
 
           {
@@ -298,17 +292,12 @@ jobs:
             java -version 2>&1 || true
             echo
 
-            if [ -n "${PROJECT_DIR:-}" ] \
-              && [ -d "$PROJECT_DIR" ]; then
-
+            if [ -n "${PROJECT_DIR:-}" ] && [ -d "$PROJECT_DIR" ]; then
               APK="$PROJECT_DIR/build/app/outputs/flutter-apk/app-release.apk"
-
               if [ -f "$APK" ]; then
                 echo "APK generated successfully."
-                echo
                 echo "APK size:"
                 du -h "$APK"
-                echo
                 echo "APK SHA256:"
                 sha256sum "$APK"
               else
@@ -317,7 +306,6 @@ jobs:
             else
               echo "Project extraction did not complete."
             fi
-
           } > "$DIAGNOSTICS_DIR/build-metadata.txt"
 
       # --------------------------------------------------
@@ -325,7 +313,7 @@ jobs:
       # --------------------------------------------------
       - name: Upload diagnostic files
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: likedin-build-diagnostics
           path: ${{ env.DIAGNOSTICS_DIR }}/
@@ -337,26 +325,9 @@ jobs:
       # --------------------------------------------------
       - name: Upload ARM64 APK
         if: success()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: likedin-arm64-release
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
-
-      # --------------------------------------------------
-      # 16. CLEAN UP SIGNING MATERIAL
-      # --------------------------------------------------
-      - name: Remove temporary signing material
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [ -n "${PROJECT_DIR:-}" ]; then
-            rm -f \
-              "$PROJECT_DIR/android/app/likedin-release.jks" \
-              "$PROJECT_DIR/android/key.properties"
-          fi
-
-          echo "Temporary signing files removed."
