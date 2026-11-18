@@ -56,6 +56,8 @@ jobs:
           ZIP_FILE="${ZIP_FILES[0]}"
           echo "Using project archive: $ZIP_FILE"
 
+          # Start from a clean extraction directory so stale Dart files from older source trees cannot be analyzed.
+          rm -rf source
           mkdir -p source
           unzip -t "$ZIP_FILE"
           unzip -q "$ZIP_FILE" -d source
