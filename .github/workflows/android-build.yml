@@ -40,8 +40,7 @@ jobs:
           )
 
           if [ "${#ZIP_FILES[@]}" -ne 1 ]; then
-            echo "Expected exactly one project ZIP in repository root."
-            echo "Found: ${#ZIP_FILES[@]}"
+            echo "Expected exactly one project ZIP."
             printf '%s\n' "${ZIP_FILES[@]}"
             exit 1
           fi
@@ -58,8 +57,6 @@ jobs:
 
           if [ "${#PROJECT_FILES[@]}" -ne 1 ]; then
             echo "Expected exactly one pubspec.yaml."
-            echo "Found: ${#PROJECT_FILES[@]}"
-            printf '%s\n' "${PROJECT_FILES[@]}"
             exit 1
           fi
 
@@ -67,15 +64,18 @@ jobs:
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
           for required_file in \
-            "$PROJECT_DIR/pubspec.yaml" \
-            "$PROJECT_DIR/android/app/build.gradle.kts" \
-            "$PROJECT_DIR/android/settings.gradle.kts" \
-            "$PROJECT_DIR/android/gradle/wrapper/gradle-wrapper.jar" \
-            "$PROJECT_DIR/android/gradle/wrapper/gradle-wrapper.properties" \
-            "$PROJECT_DIR/android/app/google-services.json" \
-            "$PROJECT_DIR/FIXES_V1_9.11.md"; do
+            pubspec.yaml \
+            android/app/build.gradle.kts \
+            android/settings.gradle.kts \
+            android/gradle/wrapper/gradle-wrapper.jar \
+            android/gradle/wrapper/gradle-wrapper.properties \
+            android/gradle.properties \
+            android/app/google-services.json \
+            android/app/proguard-rules.pro \
+            FIXES_V1_9.11.md \
+            test/chat_info_metrics_test.dart; do
 
-            test -f "$required_file" || {
+            test -f "$PROJECT_DIR/$required_file" || {
               echo "Missing required file: $required_file"
               exit 1
             }
@@ -88,7 +88,7 @@ jobs:
 
           if [ "$SOURCE_VERSION" != "1.9.11+97" ]; then
             echo "Expected version 1.9.11+97."
-            echo "Found: ${SOURCE_VERSION:-missing}"
+            echo "Found: $SOURCE_VERSION"
             exit 1
           fi
 
@@ -105,27 +105,16 @@ jobs:
             'org\.jetbrains\.kotlin\.android.*version "2\.4\.0"' \
             "$SETTINGS_FILE"
 
-          grep -Fq \
-            'gradle-9.3.1-all.zip' \
-            "$WRAPPER_FILE"
+          grep -Fq 'gradle-9.3.1-all.zip' "$WRAPPER_FILE"
 
-          grep -Fxq \
-            'android.newDsl=false' \
-            "$GRADLE_PROPERTIES"
+          grep -Fxq 'android.newDsl=false' "$GRADLE_PROPERTIES"
+          grep -Fxq 'android.builtInKotlin=false' "$GRADLE_PROPERTIES"
 
-          grep -Fxq \
-            'android.builtInKotlin=false' \
-            "$GRADLE_PROPERTIES"
+          grep -Eq 'compileSdk = 36' "$APP_GRADLE"
+          grep -Eq 'minSdk = 30' "$APP_GRADLE"
+          grep -Fq 'applicationId = "com.example.likedin"' "$APP_GRADLE"
 
-          grep -Eq \
-            'compileSdk = 36' \
-            "$APP_GRADLE"
-
-          grep -Eq \
-            'minSdk = 30' \
-            "$APP_GRADLE"
-
-          echo "Validated Likedin source version $SOURCE_VERSION"
+          echo "Validated version: $SOURCE_VERSION"
           echo "Project directory: $PROJECT_DIR"
 
       - name: Set up Java 17
@@ -159,15 +148,16 @@ jobs:
           )"
 
           test -n "$SDKMANAGER" || {
-            echo "SDK Manager not found"
+            echo "SDK Manager not found."
             exit 1
           }
 
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
           echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
           echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/build-tools/36.0.0" >> "$GITHUB_PATH"
 
-      - name: Install Android API 36, Build Tools and NDK
+      - name: Install Android SDK components
         shell: bash
         run: |
           set -euo pipefail
@@ -222,6 +212,10 @@ jobs:
         run: |
           set -euo pipefail
 
+          dart format --output=none --set-exit-if-changed \
+            lib test \
+            2>&1 | tee "$DIAGNOSTICS_DIR/format-log.txt"
+
           flutter analyze --no-fatal-infos \
             2>&1 | tee "$DIAGNOSTICS_DIR/analyze-log.txt"
 
@@ -246,7 +240,7 @@ jobs:
             --verbose \
             2>&1 | tee "$DIAGNOSTICS_DIR/build-log.txt"
 
-      - name: Verify APK signature
+      - name: Verify APK signature and alignment
         if: success()
         working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
@@ -255,16 +249,18 @@ jobs:
 
           APK="build/app/outputs/flutter-apk/app-release.apk"
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
 
           test -f "$APK" || {
             echo "Release APK was not generated."
             exit 1
           }
 
-          test -x "$APKSIGNER" || {
-            echo "APK signer not found: $APKSIGNER"
-            exit 1
-          }
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+
+          "$ZIPALIGN" -c -v 4 "$APK" \
+            2>&1 | tee "$DIAGNOSTICS_DIR/zipalign.txt"
 
           "$APKSIGNER" verify --verbose --print-certs "$APK" \
             2>&1 | tee "$DIAGNOSTICS_DIR/apk-signature.txt"
@@ -273,8 +269,32 @@ jobs:
             echo "Configured release signing detected."
           else
             echo "Temporary debug signing detected."
-            echo "This APK is not signed with a private Play Store release key."
+            echo "Not signed with a private Play Store release key."
           fi
+
+      - name: Verify APK metadata
+        if: success()
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+
+          "$AAPT" dump badging "$APK" \
+            | tee "$DIAGNOSTICS_DIR/apk-metadata.txt"
+
+          grep -Fq "package: name='com.example.likedin'" \
+            "$DIAGNOSTICS_DIR/apk-metadata.txt"
+
+          grep -Fq "versionName='1.9.11'" \
+            "$DIAGNOSTICS_DIR/apk-metadata.txt"
+
+          grep -Fq "sdkVersion:'30'" \
+            "$DIAGNOSTICS_DIR/apk-metadata.txt"
+
+          echo "APK metadata verification successful."
 
       - name: Collect build metadata
         if: always()
@@ -307,7 +327,7 @@ jobs:
               echo "Project extraction did not complete."
             fi
 
-          } > "$DIAGNOSTICS_DIR/build-metadata.txt"
+          } > "$DIAGNOSTICS_DIR/build-metadata.txt" 2>&1
 
       - name: Upload diagnostic files
         if: always()
