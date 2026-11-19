@@ -98,10 +98,10 @@ jobs:
             "$PROJECT_DIR/pubspec.yaml" | head -n 1
           )"
 
-          if [ "$SOURCE_VERSION" != "1.9.11+97" ]; then
-            echo "Expected version 1.9.11+97."
+          if [ "$SOURCE_VERSION" != "1.9.12+98" ]; then
+            echo "Expected version 1.9.12+98."
             echo "Found: ${SOURCE_VERSION:-missing}"
-            exit 1
+          exit 1
           fi
 
           SETTINGS_FILE="$PROJECT_DIR/android/settings.gradle.kts"
