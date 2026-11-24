@@ -98,8 +98,8 @@ jobs:
             "$PROJECT_DIR/pubspec.yaml" | head -n 1
           )"
 
-          if [ "$SOURCE_VERSION" != "1.9.19+108" ]; then
-            echo "Expected version 1.9.19+108."
+          if [ "$SOURCE_VERSION" != "2.0.0+109" ]; then
+            echo "Expected version 2.0.0+109."
             echo "Found: ${SOURCE_VERSION:-missing}"
           exit 1
           fi
