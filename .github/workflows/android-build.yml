@@ -1,4 +1,4 @@
-name: Likedin v2.2.9 ARM64 Release & Auto-Update
+name: Likedin v2.2.10 ARM64 Release & Auto-Update
 
 on:
   push:
@@ -115,7 +115,8 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Fixed Peeking Bitmoji positioning so it never overlaps the newest message bubble or composer buttons, resting its hands cleanly on the composer rim
-            - Split the Files tab into 3 dedicated pages: Media (3-column thumbnail grid), Audio, and Docs
-            - Removed duplicate navigation buttons across the top bar, Home screen, Profile, Settings, Chat menu, and Contact info
+            - Chat bubbles now scroll smoothly behind both the frosted glass top header and frosted glass composer pill
+            - Repositioned Peeking Bitmoji above the entire bottom composer dock so it never overlaps the Reply/Edit banner or Bold/Italic formatting bar
+            - Boosted floating bottom nav bar frosted contrast so labels remain crisp over bright photos
+            - Eliminated Files tab reloads and scroll jank using persistent in-memory state, synchronous thumbnail caching, lazy SliverGrid virtualization, and tab keep-alive
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
