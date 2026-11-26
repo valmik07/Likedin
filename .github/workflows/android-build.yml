@@ -1,4 +1,4 @@
-name: Likedin v2.2.8 ARM64 Release & Auto-Update
+name: Likedin v2.2.9 ARM64 Release & Auto-Update
 
 on:
   push:
@@ -115,9 +115,7 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Refined Photo & Album Viewers with double-tap focal zoom, tap-to-hide immersive HUD, smooth swipe-down dismiss, and direct Save to Downloads
-            - Refined Video Viewer with auto-hiding glass HUD, center play/pause/replay, smooth scrubber, mute, 1x/1.5x/2x speed, landscape toggle, and Save to Downloads
-            - Direct automatic downloading for GIFs and videos in chat without requiring a manual download tap
-            - Removed file names from the bottom of photos, GIFs, and videos in chat
-            - Upgraded the Home Media/Files tab to show a 3-column thumbnail grid instead of vertical tiles
+            - Fixed Peeking Bitmoji positioning so it never overlaps the newest message bubble or composer buttons, resting its hands cleanly on the composer rim
+            - Split the Files tab into 3 dedicated pages: Media (3-column thumbnail grid), Audio, and Docs
+            - Removed duplicate navigation buttons across the top bar, Home screen, Profile, Settings, Chat menu, and Contact info
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
