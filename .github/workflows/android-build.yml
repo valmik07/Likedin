@@ -1,4 +1,4 @@
-name: Likedin v2.2.5 ARM64 Release & Auto-Update
+name: Likedin v2.2.7 ARM64 Release & Auto-Update
 
 on:
   push:
@@ -115,8 +115,7 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Snapchat-style Peeking Bitmoji Avatar over the chat composer (in-chat presence, typing bounce, recording mic bars, and tap-to-wave)
-            - Full Chat Avatar Studio with Male & Female presets, 6 skin tones, 8 hairstyles, 6 outfits, accessories & facial hair synced over Realtime Broadcast
-            - Removed typing/recording text from the top bar and removed the bottom typing bubble
-            - Built-in Photo Editor before sending (freehand draw, draggable text stickers, 90-degree rotate, and crop presets)
+            - Redesigned Bitmoji renderer with modern 3D radial shading, sculpted jawline, multi-layer colored irises, volumetric hair highlights, modern streetwear & knit beanie/shades
+            - Streamlined My Bitmoji studio to customize only your own avatar with a pinned spotlight preview and Face / Hair / Outfit / Extras tabs
+            - Upgraded Peeking Bitmoji in-chat detection with Realtime Presence + automatic Online fallback for older APKs
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
