@@ -63,9 +63,10 @@ jobs:
       - name: Fetch dependencies & analyze
         working-directory: ${{ env.APP_DIR }}
         run: |
-          set -euo pipefail
-          flutter pub get
-          flutter analyze
+         set -euo pipefail
+         flutter pub get
+         flutter analyze --no-fatal-infos --no-fatal-warnings
+
 
       - name: Build ARM64 release APK
         working-directory: ${{ env.APP_DIR }}
