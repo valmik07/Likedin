@@ -74,14 +74,21 @@ jobs:
       - name: Bundle Android 16 Noto Color Emoji font
         working-directory: ${{ env.APP_DIR }}
         run: |
-          set -euo pipefail
-          mkdir -p assets/fonts
-          if [ ! -s assets/fonts/NotoColorEmoji.ttf ]; then
-            curl -fL --retry 3 --retry-delay 2 \
-              "https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf" \
-              -o assets/fonts/NotoColorEmoji.ttf
-          fi
-          ls -lh assets/fonts/NotoColorEmoji.ttf
+         set -euo pipefail
+         mkdir -p assets/fonts
+         if [ ! -s assets/fonts/NotoColorEmoji.ttf ]; then
+           curl -fL --retry 3 --retry-delay 2 \
+             "https://raw.githubusercontent.com/googlefonts/noto-emoji/v2.051/fonts/NotoColorEmoji.ttf" \
+             -o assets/fonts/NotoColorEmoji.ttf \
+           || curl -fL --retry 3 --retry-delay 2 \
+             "https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@v2.051/fonts/NotoColorEmoji.ttf" \
+             -o assets/fonts/NotoColorEmoji.ttf \
+           || curl -fL --retry 3 --retry-delay 2 \
+             "https://raw.githubusercontent.com/google/fonts/main/ofl/notocoloremoji/NotoColorEmoji-Regular.ttf" \
+             -o assets/fonts/NotoColorEmoji.ttf
+         fi
+         ls -lh assets/fonts/NotoColorEmoji.ttf
+
 
       - name: Fetch dependencies & analyze
         working-directory: ${{ env.APP_DIR }}
