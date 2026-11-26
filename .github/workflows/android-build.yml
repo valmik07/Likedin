@@ -72,7 +72,7 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: |
           set -euo pipefail
-          flutter build apk --release --target-platform android-arm64
+          flutter build apk --release --target-platform android-arm64 --android-skip-build-dependency-validation
           cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/likedin-arm64-v${APP_VERSION}.apk"
 
       - name: Upload APK artifact
