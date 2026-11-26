@@ -1,4 +1,4 @@
-name: Likedin v2.2.10 ARM64 Release & Auto-Update
+name: Likedin v2.3.0 Liquid Glass ARM64 Release & Auto-Update
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Detected app dir: $APP_DIR (version $VERSION)"
 
-          # Auto-bump AGP 9.1.0 -> 9.1.1 and Gradle 9.3.1 -> 9.5.0 for Flutter 3.50+
+          # Ensure AGP 9.1.1 and Gradle 9.5.0 compatibility for Flutter 3.50+
           for f in "$APP_DIR/android/settings.gradle.kts" "$APP_DIR/android/settings.gradle"; do
             if [ -f "$f" ]; then
               sed -i 's/"9\.1\.0"/"9.1.1"/g' "$f"
@@ -89,19 +89,25 @@ jobs:
           fi
           ls -lh assets/fonts/NotoColorEmoji.ttf
 
-      - name: Fetch dependencies & analyze
+      - name: Fetch dependencies, analyze & test
         working-directory: ${{ env.APP_DIR }}
         run: |
           set -euo pipefail
           flutter pub get
           flutter analyze --no-fatal-infos
+          flutter test
 
-      - name: Build ARM64 release APK
+      - name: Build compact ARM64 release APK
         working-directory: ${{ env.APP_DIR }}
         run: |
           set -euo pipefail
-          flutter build apk --release --target-platform android-arm64 --android-skip-build-dependency-validation
+          flutter build apk --release \
+            --target-platform android-arm64 \
+            --obfuscate \
+            --split-debug-info=build/debug-info \
+            --android-skip-build-dependency-validation
           cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/likedin-arm64-v${APP_VERSION}.apk"
+          ls -lh "$GITHUB_WORKSPACE/likedin-arm64-v${APP_VERSION}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -115,8 +121,8 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Chat bubbles now scroll smoothly behind both the frosted glass top header and frosted glass composer pill
-            - Repositioned Peeking Bitmoji above the entire bottom composer dock so it never overlaps the Reply/Edit banner or Bold/Italic formatting bar
-            - Boosted floating bottom nav bar frosted contrast so labels remain crisp over bright photos
-            - Eliminated Files tab reloads and scroll jank using persistent in-memory state, synchronous thumbnail caching, lazy SliverGrid virtualization, and tab keep-alive
+            - Reduced APK size dramatically via ARM64-only ABI filtering, compressed native .so packaging, English-only resource filtering, dead-code/sqflite removal, and obfuscated symbol splitting
+            - App-wide Liquid Glass redesign across Home, Chat, Calls, Files, Profile, Settings, Contact Info, Shared Media, Gallery, and Dialogs
+            - Dual-brightness Chat Themes (Ocean, Rose, Emerald, Sunset, Lavender, Minimal, Default) that automatically adapt to both White (Light) and Dark modes
+            - Smoother low-RAM performance: 24 MB image cache budget, capped blur sigmas (<= 10), and optimized chat timeline scrolling
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
