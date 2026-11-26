@@ -1,4 +1,4 @@
-name: Likedin v2.2.4 ARM64 Release & Auto-Update
+name: Likedin v2.2.5 ARM64 Release & Auto-Update
 
 on:
   push:
@@ -115,7 +115,8 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Backward-compatible streaming AES-256-GCM end-to-end encryption for shared media & thumbnails (TUS resumable, ~1 MB RAM footprint)
-            - Fixed outgoing call setup failures to record 'failed' instead of triggering false missed-call alerts
-            - Connected automatic media cache quota eviction directly into SharedMediaService
+            - Snapchat-style Peeking Bitmoji Avatar over the chat composer (in-chat presence, typing bounce, recording mic bars, and tap-to-wave)
+            - Full Chat Avatar Studio with Male & Female presets, 6 skin tones, 8 hairstyles, 6 outfits, accessories & facial hair synced over Realtime Broadcast
+            - Removed typing/recording text from the top bar and removed the bottom typing bubble
+            - Built-in Photo Editor before sending (freehand draw, draggable text stickers, 90-degree rotate, and crop presets)
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
