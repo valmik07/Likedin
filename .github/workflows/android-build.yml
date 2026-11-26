@@ -1,4 +1,4 @@
-name: Likedin v2.2.7 ARM64 Release & Auto-Update
+name: Likedin v2.2.8 ARM64 Release & Auto-Update
 
 on:
   push:
@@ -115,7 +115,9 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Redesigned Bitmoji renderer with modern 3D radial shading, sculpted jawline, multi-layer colored irises, volumetric hair highlights, modern streetwear & knit beanie/shades
-            - Streamlined My Bitmoji studio to customize only your own avatar with a pinned spotlight preview and Face / Hair / Outfit / Extras tabs
-            - Upgraded Peeking Bitmoji in-chat detection with Realtime Presence + automatic Online fallback for older APKs
+            - Refined Photo & Album Viewers with double-tap focal zoom, tap-to-hide immersive HUD, smooth swipe-down dismiss, and direct Save to Downloads
+            - Refined Video Viewer with auto-hiding glass HUD, center play/pause/replay, smooth scrubber, mute, 1x/1.5x/2x speed, landscape toggle, and Save to Downloads
+            - Direct automatic downloading for GIFs and videos in chat without requiring a manual download tap
+            - Removed file names from the bottom of photos, GIFs, and videos in chat
+            - Upgraded the Home Media/Files tab to show a 3-column thumbnail grid instead of vertical tiles
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
