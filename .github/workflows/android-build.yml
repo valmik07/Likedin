@@ -1,4 +1,4 @@
-name: Likedin v2.6.0 OriginOS 7 Edition ARM64 Release
+name: Likedin v2.8.0 Strict Double Ratchet & Unrestricted Screenshots ARM64 Release
 
 on:
   push:
@@ -139,11 +139,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
-          name: Likedin v${{ env.APP_VERSION }}
+          name: Likedin v${{ env.APP_VERSION }} — Strict Double Ratchet & Unrestricted Screenshots
           body: |
-            - Full OriginOS 7 Design System: 3 translucent glass textures (Real, Natural, Soft) + Off, tuned automatically for 3 GB Android 11 vs 6 GB phones
-            - Origin Island morphing top capsule for minimized audio calls (with live 4-bar waveform, timer, Mute/Speaker/End) and live media upload / E2EE verification status pulses
-            - OriginOS 7 Glint Light Effect: tilt-responsive iridescent sheen powered by Android's native accelerometer (auto-paused in background, zero extra packages, toggleable in Appearance)
-            - Fluid Motion spring physics (SpringSimulation squish & rebound + Dynamic Glow contact highlights) and an elastic gliding Liquid Glass bottom dock
-            - Immersive day/night lighting modulation across all 7 themes + explicit Supabase table grants in the E2EE keys migration
+            ### What's New in Likedin v${{ env.APP_VERSION }}
+            - **Strict Fail-Closed E2EE:** Plaintext fallback on send is permanently disabled for text and media — messages only leave your phone encrypted.
+            - **Pure-Dart Double Ratchet Forward Secrecy:** Upgraded to a Signal-style X25519 + HKDF-SHA256 + HMAC-SHA256 + AES-256-GCM Double Ratchet (`v2`) with per-message key destruction, out-of-order skipped-key support, and zero heavy native dependencies.
+            - **Forward-Secret Encrypted Media & Encrypted Metadata:** Every photo, video, voice note, document, and thumbnail now uses a unique 256-bit per-file key, and its metadata JSON is Double-Ratchet encrypted (fully supported in Chat, Contact Info, and Files).
+            - **Key-Change Send Lock:** Automatically pauses outgoing sends whenever your friend's identity key changes until you verify or accept the new safety fingerprint in Settings.
+            - **Screenshots Enabled Everywhere:** Removed `FLAG_SECURE` blocking so screenshots now work across the entire app — even when hidden chats exist and inside hidden chats — while keeping hidden-chat password/biometric lock intact.
+            - **OriginOS 7 Fluid Motion & Glide Dock:** Includes the 1:1 finger-gliding bottom tab bar, elastic spring scroll & swipe-to-reply physics, and 120 Hz Real Glass optimizations.
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
