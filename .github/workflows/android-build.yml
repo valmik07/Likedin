@@ -1,4 +1,4 @@
-name: Likedin v2.4.2 Smooth Chat & Minimal Composer ARM64 Release
+name: Likedin v2.4.3 Final Release ARM64 APK
 
 on:
   push:
@@ -121,7 +121,9 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Eliminated ChatPage scroll jitter: replaced per-bubble ClipRRect + dual CustomPaint shaders with a GPU-native single-draw-call LiquidGlassBubble, removed idle Stack/Opacity/AnimatedContainer controllers from swipe-reply rows, eliminated live BackdropFilter readback stalls over the chat list, isolated ListView & PeekingBitmojiBar with RepaintBoundary, memoized timeline grouping, and fast-pathed plain text rendering
-            - Fixed Light Mode & Dark Mode read vs delivered ticks: delivered/sent ticks now use crisp muted grey (#8E99AB) while read ticks use bright sky blue (#0095F6 / #38D6FF)
-            - Redesigned the chat composer into a minimal, uncluttered 3-part Liquid Glass bar (detached + circle, spacious single glass text pill with emoji & contextual Aa formatting, detached Mic/Send circle) while keeping 100% of features
+            - Fixed No Overlay widget crash when long-pressing buttons inside active or minimized calls
+            - Fixed cold-start Android Direct Share delivery race in MainActivity so sharing from other apps works reliably when Likedin is closed
+            - Fixed Android System PiP taking priority over the in-app minimized video bubble when leaving the app
+            - Fixed proximity screen-off sensor staying active when an audio call is minimized while browsing the app
+            - Fixed minimized incoming-call full-screen flash on remote hangup and automatic active-call teardown on sign-out
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
