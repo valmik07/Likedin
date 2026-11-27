@@ -1,4 +1,4 @@
-name: Likedin v2.4.1 Liquid Glass, Notification & Scroll Fix ARM64 Release
+name: Likedin v2.4.2 Smooth Chat & Minimal Composer ARM64 Release
 
 on:
   push:
@@ -121,8 +121,7 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Removed the dark grey horizontal band across Liquid Glass panels in both Light and Dark modes by fixing Colors.transparent gradient stops and switching shadows to BlurStyle.outer
-            - Fixed faded/washed-out text on Calls and tall cards in Light Mode by painting the Liquid Glass top sheen behind content instead of over it
-            - Fixed foreground message notifications popping up inside Chat by preserving ChatPage's element tree across tab transitions and syncing conversation visibility in AppShell
-            - Boosted scroll speed and smoothness by virtualizing the 100-item Calls list with SliverList.builder, removing per-card BoxShadow blurs, lowering floating blur sigma, and switching Home to native Android scroll physics
+            - Eliminated ChatPage scroll jitter: replaced per-bubble ClipRRect + dual CustomPaint shaders with a GPU-native single-draw-call LiquidGlassBubble, removed idle Stack/Opacity/AnimatedContainer controllers from swipe-reply rows, eliminated live BackdropFilter readback stalls over the chat list, isolated ListView & PeekingBitmojiBar with RepaintBoundary, memoized timeline grouping, and fast-pathed plain text rendering
+            - Fixed Light Mode & Dark Mode read vs delivered ticks: delivered/sent ticks now use crisp muted grey (#8E99AB) while read ticks use bright sky blue (#0095F6 / #38D6FF)
+            - Redesigned the chat composer into a minimal, uncluttered 3-part Liquid Glass bar (detached + circle, spacious single glass text pill with emoji & contextual Aa formatting, detached Mic/Send circle) while keeping 100% of features
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
