@@ -1,4 +1,4 @@
-name: Likedin v2.3.0 Liquid Glass ARM64 Release & Auto-Update
+name: Likedin v2.3.2 Bugfix & iOS Liquid Glass ARM64 Release
 
 on:
   push:
@@ -121,8 +121,9 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Reduced APK size dramatically via ARM64-only ABI filtering, compressed native .so packaging, English-only resource filtering, dead-code/sqflite removal, and obfuscated symbol splitting
-            - App-wide Liquid Glass redesign across Home, Chat, Calls, Files, Profile, Settings, Contact Info, Shared Media, Gallery, and Dialogs
-            - Dual-brightness Chat Themes (Ocean, Rose, Emerald, Sunset, Lavender, Minimal, Default) that automatically adapt to both White (Light) and Dark modes
-            - Smoother low-RAM performance: 24 MB image cache budget, capped blur sigmas (<= 10), and optimized chat timeline scrolling
+            - Fixed critical WebRTC call bug under --obfuscate release builds by switching directly on RTCPeerConnectionState enum values
+            - Fixed Flutter Impeller backdrop blur 8px banding, edge clamp smear, and unbounded GPU snapshot cost in Liquid Glass panels
+            - Fixed missing E2EE decryption on Home conversation preview, encrypted chat backup export, jump-to-reply, and realtime reply previews
+            - Fixed async index race condition in realtime message updates and biometric double-reply crash in MainActivity
+            - Hardened R8 ProGuard rules for Gson & enums, cleared stale thumbnail/media caches on cache wipe & sign-out, and polished Liquid Glass bottom sheets
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
