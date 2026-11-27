@@ -1,4 +1,4 @@
-name: Likedin v2.8.0 Strict Double Ratchet & Unrestricted Screenshots ARM64 Release
+name: Likedin v2.8.0 Release Build
 
 on:
   push:
@@ -139,13 +139,17 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
-          name: Likedin v${{ env.APP_VERSION }} — Strict Double Ratchet & Unrestricted Screenshots
+          name: Likedin v${{ env.APP_VERSION }}
+          draft: false
+          prerelease: false
+          make_latest: 'true'
           body: |
-            ### What's New in Likedin v${{ env.APP_VERSION }}
-            - **Strict Fail-Closed E2EE:** Plaintext fallback on send is permanently disabled for text and media — messages only leave your phone encrypted.
-            - **Pure-Dart Double Ratchet Forward Secrecy:** Upgraded to a Signal-style X25519 + HKDF-SHA256 + HMAC-SHA256 + AES-256-GCM Double Ratchet (`v2`) with per-message key destruction, out-of-order skipped-key support, and zero heavy native dependencies.
-            - **Forward-Secret Encrypted Media & Encrypted Metadata:** Every photo, video, voice note, document, and thumbnail now uses a unique 256-bit per-file key, and its metadata JSON is Double-Ratchet encrypted (fully supported in Chat, Contact Info, and Files).
-            - **Key-Change Send Lock:** Automatically pauses outgoing sends whenever your friend's identity key changes until you verify or accept the new safety fingerprint in Settings.
-            - **Screenshots Enabled Everywhere:** Removed `FLAG_SECURE` blocking so screenshots now work across the entire app — even when hidden chats exist and inside hidden chats — while keeping hidden-chat password/biometric lock intact.
-            - **OriginOS 7 Fluid Motion & Glide Dock:** Includes the 1:1 finger-gliding bottom tab bar, elastic spring scroll & swipe-to-reply physics, and 120 Hz Real Glass optimizations.
+            What's New in Likedin v${{ env.APP_VERSION }}:
+
+            • Strict Double Ratchet E2EE (Forward Secrecy): Per-message X25519 + AES-256-GCM encryption with zero plaintext fallback and encrypted media metadata.
+            • Forward-Secret Media & Key-Change Lock: Every photo, video, voice note, and file uses a unique 256-bit key, and sending pauses automatically if a security key changes.
+            • Screenshots Enabled Everywhere: You can now take screenshots anywhere in the app, including inside hidden chats.
+            • Faster Albums & Files Tab: Fixed cache folder scanning and cached album previews for smoother browsing and swiping.
+            • Smoother Reactions & Stability Fixes: Fixed rapid-tap reaction flickering, added crash guards when leaving screens mid-action, and polished sign-in and password forms.
+            • OriginOS 7 Fluid Motion & Glide Dock: Finger-gliding bottom tab bar, spring scrolling, and 120 Hz Real Glass polish.
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
