@@ -1,4 +1,4 @@
-name: Likedin v2.5.0 Hardened Release ARM64 APK
+name: Likedin v2.6.0 OriginOS 7 Edition ARM64 Release
 
 on:
   push:
@@ -141,10 +141,9 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Added E2EE identity verification states (Verified, Active, Key Changed, Pending, Error), manual fingerprint verification, and persistent peer key-change warnings while staying 100% compatible with older versions
-            - Added idempotent SQL migration for public.likedin_e2ee_keys cloud backup/restore
-            - Propagated local cached media deletion errors so delete-for-everyone tombstone cleanup retries until every local copy is removed
-            - Hardened Android release signing to fail closed if release keystore credentials are missing
-            - Made auto-updater strictly require an HTTPS ARM64 APK and retry failed checks after 15 minutes instead of waiting 6 hours
-            - Added unit tests for E2EE verification & key-change detection, updater selection/retries, and media cache deletion propagation
+            - Full OriginOS 7 Design System: 3 translucent glass textures (Real, Natural, Soft) + Off, tuned automatically for 3 GB Android 11 vs 6 GB phones
+            - Origin Island morphing top capsule for minimized audio calls (with live 4-bar waveform, timer, Mute/Speaker/End) and live media upload / E2EE verification status pulses
+            - OriginOS 7 Glint Light Effect: tilt-responsive iridescent sheen powered by Android's native accelerometer (auto-paused in background, zero extra packages, toggleable in Appearance)
+            - Fluid Motion spring physics (SpringSimulation squish & rebound + Dynamic Glow contact highlights) and an elastic gliding Liquid Glass bottom dock
+            - Immersive day/night lighting modulation across all 7 themes + explicit Supabase table grants in the E2EE keys migration
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
