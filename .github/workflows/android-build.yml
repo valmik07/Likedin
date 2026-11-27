@@ -1,4 +1,4 @@
-name: Likedin v2.3.2 Bugfix & iOS Liquid Glass ARM64 Release
+name: Likedin v2.4.0 Multitask Calls, Direct Share & High Refresh Rate ARM64 Release
 
 on:
   push:
@@ -121,9 +121,10 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Fixed critical WebRTC call bug under --obfuscate release builds by switching directly on RTCPeerConnectionState enum values
-            - Fixed Flutter Impeller backdrop blur 8px banding, edge clamp smear, and unbounded GPU snapshot cost in Liquid Glass panels
-            - Fixed missing E2EE decryption on Home conversation preview, encrypted chat backup export, jump-to-reply, and realtime reply previews
-            - Fixed async index race condition in realtime message updates and biometric double-reply crash in MainActivity
-            - Hardened R8 ProGuard rules for Gson & enums, cleared stale thumbnail/media caches on cache wipe & sign-out, and polished Liquid Glass bottom sheets
+            - Multitask during calls: minimize audio calls to a floating Liquid Glass top bar or video calls to a draggable dual-face floating PiP card showing both faces while using the app
+            - Fixed low refresh rate by matching active physical display resolution on Android + re-applying on window focus + removing idle Opacity/blur GPU bottlenecks
+            - Added automatic Android 11 / 3 GB RAM device optimization (smart 18 MB image cache & lightweight Liquid Glass default) while keeping full 90/120Hz optical glass on newer phones
+            - Added Snapchat-style Bitmoji poses for viewing photos (held glossy photo card + Viewing pill) and taking camera photos (winking camera + flash + Snapping pill)
+            - Added smooth directional slide + cross-fade transitions across Chats, Calls, Files, and Profile tabs
+            - Added native Android Direct Share receiver (ACTION_SEND & ACTION_SEND_MULTIPLE) for sharing text, links, photos, videos, audio, and files directly from other apps
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
