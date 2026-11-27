@@ -1,9 +1,18 @@
-name: Likedin v2.4.3 Final Release ARM64 APK
+name: Likedin v2.5.0 Hardened Release ARM64 APK
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      allow_debug_signing:
+        description: 'Allow debug signing ONLY for local test builds when release keystore secrets are absent'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   contents: write
@@ -57,18 +66,28 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Configure Android release signing
+      - name: Configure Android release signing (fail closed)
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ALLOW_DEBUG_SIGNING: ${{ github.event.inputs.allow_debug_signing || 'false' }}
         run: |
           set -euo pipefail
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
             echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$APP_DIR/android/upload-keystore.jks"
             printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=../upload-keystore.jks\n' \
               "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_PASSWORD" "$ANDROID_KEY_ALIAS" > "$APP_DIR/android/key.properties"
+            echo "IS_RELEASE_SIGNED=true" >> "$GITHUB_ENV"
+            echo "Release keystore configured."
+          elif [ "$ALLOW_DEBUG_SIGNING" = "true" ]; then
+            echo "ORG_GRADLE_PROJECT_allowDebugReleaseSigning=true" >> "$GITHUB_ENV"
+            echo "IS_RELEASE_SIGNED=false" >> "$GITHUB_ENV"
+            echo "::warning::Building with explicit debug-signing override (test only)."
+          else
+            echo "::error::Missing ANDROID_KEYSTORE_* release signing secrets. Refusing to silently build a debug-signed release APK."
+            exit 1
           fi
 
       - name: Bundle Android 16 Noto Color Emoji font
@@ -116,14 +135,16 @@ jobs:
           path: likedin-arm64-v${{ env.APP_VERSION }}.apk
 
       - name: Publish GitHub Release for In-App Auto-Updater
+        if: env.IS_RELEASE_SIGNED == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Fixed No Overlay widget crash when long-pressing buttons inside active or minimized calls
-            - Fixed cold-start Android Direct Share delivery race in MainActivity so sharing from other apps works reliably when Likedin is closed
-            - Fixed Android System PiP taking priority over the in-app minimized video bubble when leaving the app
-            - Fixed proximity screen-off sensor staying active when an audio call is minimized while browsing the app
-            - Fixed minimized incoming-call full-screen flash on remote hangup and automatic active-call teardown on sign-out
+            - Added E2EE identity verification states (Verified, Active, Key Changed, Pending, Error), manual fingerprint verification, and persistent peer key-change warnings while staying 100% compatible with older versions
+            - Added idempotent SQL migration for public.likedin_e2ee_keys cloud backup/restore
+            - Propagated local cached media deletion errors so delete-for-everyone tombstone cleanup retries until every local copy is removed
+            - Hardened Android release signing to fail closed if release keystore credentials are missing
+            - Made auto-updater strictly require an HTTPS ARM64 APK and retry failed checks after 15 minutes instead of waiting 6 hours
+            - Added unit tests for E2EE verification & key-change detection, updater selection/retries, and media cache deletion propagation
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
