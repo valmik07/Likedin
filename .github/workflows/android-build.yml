@@ -1,4 +1,4 @@
-name: Likedin v2.4.0 Multitask Calls, Direct Share & High Refresh Rate ARM64 Release
+name: Likedin v2.4.1 Liquid Glass, Notification & Scroll Fix ARM64 Release
 
 on:
   push:
@@ -121,10 +121,8 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
           body: |
-            - Multitask during calls: minimize audio calls to a floating Liquid Glass top bar or video calls to a draggable dual-face floating PiP card showing both faces while using the app
-            - Fixed low refresh rate by matching active physical display resolution on Android + re-applying on window focus + removing idle Opacity/blur GPU bottlenecks
-            - Added automatic Android 11 / 3 GB RAM device optimization (smart 18 MB image cache & lightweight Liquid Glass default) while keeping full 90/120Hz optical glass on newer phones
-            - Added Snapchat-style Bitmoji poses for viewing photos (held glossy photo card + Viewing pill) and taking camera photos (winking camera + flash + Snapping pill)
-            - Added smooth directional slide + cross-fade transitions across Chats, Calls, Files, and Profile tabs
-            - Added native Android Direct Share receiver (ACTION_SEND & ACTION_SEND_MULTIPLE) for sharing text, links, photos, videos, audio, and files directly from other apps
+            - Removed the dark grey horizontal band across Liquid Glass panels in both Light and Dark modes by fixing Colors.transparent gradient stops and switching shadows to BlurStyle.outer
+            - Fixed faded/washed-out text on Calls and tall cards in Light Mode by painting the Liquid Glass top sheen behind content instead of over it
+            - Fixed foreground message notifications popping up inside Chat by preserving ChatPage's element tree across tab transitions and syncing conversation visibility in AppShell
+            - Boosted scroll speed and smoothness by virtualizing the 100-item Calls list with SliverList.builder, removing per-card BoxShadow blurs, lowering floating blur sigma, and switching Home to native Android scroll physics
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
