@@ -1,4 +1,4 @@
-name: Likedin v2.8.0 Release Build
+name: Likedin v2.8.2 Release Build
 
 on:
   push:
@@ -136,7 +136,7 @@ jobs:
 
       - name: Publish GitHub Release for In-App Auto-Updater
         if: env.IS_RELEASE_SIGNED == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.APP_VERSION }}
           name: Likedin v${{ env.APP_VERSION }}
@@ -146,10 +146,9 @@ jobs:
           body: |
             What's New in Likedin v${{ env.APP_VERSION }}:
 
-            • Strict Double Ratchet E2EE (Forward Secrecy): Per-message X25519 + AES-256-GCM encryption with zero plaintext fallback and encrypted media metadata.
-            • Forward-Secret Media & Key-Change Lock: Every photo, video, voice note, and file uses a unique 256-bit key, and sending pauses automatically if a security key changes.
-            • Screenshots Enabled Everywhere: You can now take screenshots anywhere in the app, including inside hidden chats.
-            • Faster Albums & Files Tab: Fixed cache folder scanning and cached album previews for smoother browsing and swiping.
-            • Smoother Reactions & Stability Fixes: Fixed rapid-tap reaction flickering, added crash guards when leaving screens mid-action, and polished sign-in and password forms.
-            • OriginOS 7 Fluid Motion & Glide Dock: Finger-gliding bottom tab bar, spring scrolling, and 120 Hz Real Glass polish.
+            • Overflow-Proof Quick-Reaction Pill: Fixed the long-press emoji bar so all 7 reactions and the + picker fit cleanly on narrow 360dp screens even at 120% text size.
+            • Inline Failed-Send Retry & Offline Banner: Failed messages now stay visible inline with a 1-tap Retry and Dismiss button instead of resetting your draft, paired with a live reconnecting banner when your network drops.
+            • Better Readability Over Custom Wallpapers: Boosted chat bubble contrast, muted timestamps, and minimum wallpaper scrim when a custom photo wallpaper is active.
+            • Reduce Motion Glass Optimization: Automatically skips live backdrop blur when Reduce Motion is enabled for faster frames and lower battery use (Soft Glass remains untouched).
+            • Stricter Async Safety & New Automated Tests: Enabled use_build_context_synchronously linting and added 6 new widget and unit tests covering 360dp menus, Reduce Motion blur, PIN dialog, email validation, and media cache.
           files: likedin-arm64-v${{ env.APP_VERSION }}.apk
