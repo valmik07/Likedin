@@ -1,4 +1,4 @@
-name: Likedin v2.8.2 Release Build
+name: Likedin ARM64 Release Build
 
 on:
   push:
@@ -14,17 +14,27 @@ on:
           - 'false'
           - 'true'
 
+concurrency:
+  group: likedin-release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
-  build:
+  check-version:
     runs-on: ubuntu-latest
+    outputs:
+      zip_path: ${{ steps.meta.outputs.zip_path }}
+      app_version: ${{ steps.meta.outputs.app_version }}
+      tag_exists: ${{ steps.meta.outputs.tag_exists }}
+      should_build: ${{ steps.meta.outputs.should_build }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract project ZIP
+      - name: Detect version & exit early if release tag already exists
+        id: meta
         run: |
           set -euo pipefail
           mapfile -t ZIP_FILES < <(find . -maxdepth 1 -type f -iname '*.zip' -print)
@@ -33,26 +43,60 @@ jobs:
             printf '%s\n' "${ZIP_FILES[@]}"
             exit 1
           fi
+          ZIP_PATH="${ZIP_FILES[0]}"
+          PUBSPEC_ENTRY="$(unzip -Z1 "$ZIP_PATH" | grep -E '(^|/)pubspec\.yaml$' | head -n 1)"
+          if [ -z "$PUBSPEC_ENTRY" ]; then
+            echo "::error::Could not find pubspec.yaml inside ${ZIP_PATH}"
+            exit 1
+          fi
+          VERSION="$(unzip -p "$ZIP_PATH" "$PUBSPEC_ENTRY" | grep -E '^version:' | head -n 1 | awk '{print $2}' | tr -d '\r')"
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not parse version from ${PUBSPEC_ENTRY}"
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+            TAG_EXISTS="true"
+          else
+            TAG_EXISTS="false"
+          fi
+
+          if [ "$TAG_EXISTS" = "true" ] && [ "${{ github.event_name }}" = "push" ]; then
+            SHOULD_BUILD="false"
+            echo "::notice::Tag v${VERSION} already exists on origin. Exiting early before Java/Flutter setup to save build minutes. Bump version in pubspec.yaml to build a new release."
+          else
+            SHOULD_BUILD="true"
+            if [ "$TAG_EXISTS" = "true" ]; then
+              echo "::notice::Manual workflow_dispatch for existing tag v${VERSION}: building artifacts only (GitHub Release publish will be skipped)."
+            fi
+          fi
+
+          echo "zip_path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
+          echo "app_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag_exists=${TAG_EXISTS}" >> "$GITHUB_OUTPUT"
+          echo "should_build=${SHOULD_BUILD}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    env:
+      APP_VERSION: ${{ needs.check-version.outputs.app_version }}
+      RELEASE_TAG_EXISTS: ${{ needs.check-version.outputs.tag_exists }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract project ZIP
+        run: |
+          set -euo pipefail
           rm -rf build_src
           mkdir -p build_src
-          unzip -q "${ZIP_FILES[0]}" -d build_src
+          unzip -q "${{ needs.check-version.outputs.zip_path }}" -d build_src
           PUBSPEC_PATH="$(find build_src -maxdepth 3 -name pubspec.yaml | head -n 1)"
           APP_DIR="$(dirname "$PUBSPEC_PATH")"
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
-          VERSION="$(grep -E '^version:' "$PUBSPEC_PATH" | head -n 1 | awk '{print $2}' | tr -d '\r')"
-          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "Detected app dir: $APP_DIR (version $VERSION)"
-
-          # Ensure AGP 9.1.1 and Gradle 9.5.0 compatibility for Flutter 3.50+
-          for f in "$APP_DIR/android/settings.gradle.kts" "$APP_DIR/android/settings.gradle"; do
-            if [ -f "$f" ]; then
-              sed -i 's/"9\.1\.0"/"9.1.1"/g' "$f"
-            fi
-          done
-          WRAPPER="$APP_DIR/android/gradle/wrapper/gradle-wrapper.properties"
-          if [ -f "$WRAPPER" ]; then
-            sed -i 's/gradle-9\.3\.1/gradle-9.5.0/g' "$WRAPPER"
-          fi
+          echo "Extracted $APP_DIR (version $APP_VERSION)"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -60,10 +104,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Flutter
+      - name: Set up Flutter (pinned stable)
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.50.1'
+          channel: 'stable'
           cache: true
 
       - name: Configure Android release signing (fail closed)
@@ -90,23 +135,66 @@ jobs:
             exit 1
           fi
 
-      - name: Bundle Android 16 Noto Color Emoji font
+      - name: Bundle & verify pinned Noto Color Emoji v2.051 font
         working-directory: ${{ env.APP_DIR }}
         run: |
           set -euo pipefail
+          FONT_PATH="assets/fonts/NotoColorEmoji.ttf"
+          PINNED_COMMIT="8998f5dd683424a73e2314a8c1f1e359c19e8742"
+          EXPECTED_SIZE=10673480
+          EXPECTED_SHA256="72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b"
+
           mkdir -p assets/fonts
-          if [ ! -s assets/fonts/NotoColorEmoji.ttf ]; then
+          if [ ! -s "$FONT_PATH" ]; then
             curl -fL --retry 3 --retry-delay 2 \
-              "https://raw.githubusercontent.com/googlefonts/noto-emoji/v2.051/fonts/NotoColorEmoji.ttf" \
-              -o assets/fonts/NotoColorEmoji.ttf \
+              "https://raw.githubusercontent.com/googlefonts/noto-emoji/${PINNED_COMMIT}/fonts/NotoColorEmoji.ttf" \
+              -o "$FONT_PATH" \
             || curl -fL --retry 3 --retry-delay 2 \
-              "https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@v2.051/fonts/NotoColorEmoji.ttf" \
-              -o assets/fonts/NotoColorEmoji.ttf \
-            || curl -fL --retry 3 --retry-delay 2 \
-              "https://raw.githubusercontent.com/google/fonts/main/ofl/notocoloremoji/NotoColorEmoji-Regular.ttf" \
-              -o assets/fonts/NotoColorEmoji.ttf
+              "https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@${PINNED_COMMIT}/fonts/NotoColorEmoji.ttf" \
+              -o "$FONT_PATH"
           fi
-          ls -lh assets/fonts/NotoColorEmoji.ttf
+
+          ACTUAL_SIZE="$(stat -c%s "$FONT_PATH")"
+          if [ "$ACTUAL_SIZE" -ne "$EXPECTED_SIZE" ]; then
+            echo "::error::NotoColorEmoji.ttf size mismatch: expected ${EXPECTED_SIZE} bytes, got ${ACTUAL_SIZE}."
+            exit 1
+          fi
+
+          echo "${EXPECTED_SHA256}  ${FONT_PATH}" | sha256sum -c -
+
+          # Verify TrueType cmap format 12 contains every Unicode 16 emoji used in Likedin.
+          python3 - "$FONT_PATH" <<'PY'
+          import struct, sys
+          data = open(sys.argv[1], 'rb').read()
+          num_tables = struct.unpack('>H', data[4:6])[0]
+          cmap_off = None
+          for i in range(num_tables):
+              off = 12 + i * 16
+              tag, _, t_off, _ = struct.unpack('>4sIII', data[off:off+16])
+              if tag == b'cmap':
+                  cmap_off = t_off
+                  break
+          assert cmap_off is not None, "Missing cmap table in NotoColorEmoji.ttf"
+          num_sub = struct.unpack('>H', data[cmap_off+2:cmap_off+4])[0]
+          groups = []
+          for i in range(num_sub):
+              rec = cmap_off + 4 + i * 8
+              _, _, sub_off = struct.unpack('>HHI', data[rec:rec+8])
+              abs_off = cmap_off + sub_off
+              fmt = struct.unpack('>H', data[abs_off:abs_off+2])[0]
+              if fmt == 12:
+                  n_groups = struct.unpack('>I', data[abs_off+12:abs_off+16])[0]
+                  for g in range(n_groups):
+                      g_off = abs_off + 16 + g * 12
+                      groups.append(struct.unpack('>III', data[g_off:g_off+12]))
+                  break
+          assert groups, "Missing format 12 cmap subtable in NotoColorEmoji.ttf"
+          required = [0x1FAE9, 0x1FAC6, 0x1FADF, 0x1FA89]
+          for cp in required:
+              found = any(start <= cp <= end for start, end, _ in groups)
+              assert found, f"Missing required Unicode 16 glyph U+{cp:04X} in NotoColorEmoji.ttf"
+          print("Verified NotoColorEmoji.ttf v2.051 SHA-256, size, and Unicode 16 glyphs:", [f"U+{c:04X}" for c in required])
+          PY
 
       - name: Fetch dependencies, analyze & test
         working-directory: ${{ env.APP_DIR }}
@@ -116,26 +204,47 @@ jobs:
           flutter analyze --no-fatal-infos
           flutter test
 
-      - name: Build compact ARM64 release APK
+      - name: Build compact ARM64 release APK & SHA-256 checksum
         working-directory: ${{ env.APP_DIR }}
         run: |
           set -euo pipefail
           flutter build apk --release \
             --target-platform android-arm64 \
             --obfuscate \
-            --split-debug-info=build/debug-info \
-            --android-skip-build-dependency-validation
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/likedin-arm64-v${APP_VERSION}.apk"
-          ls -lh "$GITHUB_WORKSPACE/likedin-arm64-v${APP_VERSION}.apk"
+            --split-debug-info=build/debug-info
+          APK_NAME="likedin-arm64-v${APP_VERSION}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/${APK_NAME}"
+          (cd "$GITHUB_WORKSPACE" && sha256sum "${APK_NAME}" > "${APK_NAME}.sha256")
+          ls -lh "$GITHUB_WORKSPACE/${APK_NAME}" "$GITHUB_WORKSPACE/${APK_NAME}.sha256"
+          cat "$GITHUB_WORKSPACE/${APK_NAME}.sha256"
 
-      - name: Upload APK artifact
+      - name: Upload APK & SHA-256 artifacts
         uses: actions/upload-artifact@v4
         with:
           name: likedin-arm64-release-v${{ env.APP_VERSION }}
-          path: likedin-arm64-v${{ env.APP_VERSION }}.apk
+          path: |
+            likedin-arm64-v${{ env.APP_VERSION }}.apk
+            likedin-arm64-v${{ env.APP_VERSION }}.apk.sha256
+
+      - name: Upload obfuscation debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: likedin-debug-symbols-v${{ env.APP_VERSION }}
+          path: ${{ env.APP_DIR }}/build/debug-info
+          retention-days: 90
+
+      - name: Verify dynamic release notes exist
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          set -euo pipefail
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "::error::Missing or empty RELEASE_NOTES.md in project root."
+            exit 1
+          fi
+          cat RELEASE_NOTES.md
 
       - name: Publish GitHub Release for In-App Auto-Updater
-        if: env.IS_RELEASE_SIGNED == 'true'
+        if: env.IS_RELEASE_SIGNED == 'true' && env.RELEASE_TAG_EXISTS != 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.APP_VERSION }}
@@ -143,12 +252,7 @@ jobs:
           draft: false
           prerelease: false
           make_latest: 'true'
-          body: |
-            What's New in Likedin v${{ env.APP_VERSION }}:
-
-            • Overflow-Proof Quick-Reaction Pill: Fixed the long-press emoji bar so all 7 reactions and the + picker fit cleanly on narrow 360dp screens even at 120% text size.
-            • Inline Failed-Send Retry & Offline Banner: Failed messages now stay visible inline with a 1-tap Retry and Dismiss button instead of resetting your draft, paired with a live reconnecting banner when your network drops.
-            • Better Readability Over Custom Wallpapers: Boosted chat bubble contrast, muted timestamps, and minimum wallpaper scrim when a custom photo wallpaper is active.
-            • Reduce Motion Glass Optimization: Automatically skips live backdrop blur when Reduce Motion is enabled for faster frames and lower battery use (Soft Glass remains untouched).
-            • Stricter Async Safety & New Automated Tests: Enabled use_build_context_synchronously linting and added 6 new widget and unit tests covering 360dp menus, Reduce Motion blur, PIN dialog, email validation, and media cache.
-          files: likedin-arm64-v${{ env.APP_VERSION }}.apk
+          body_path: ${{ env.APP_DIR }}/RELEASE_NOTES.md
+          files: |
+            likedin-arm64-v${{ env.APP_VERSION }}.apk
+            likedin-arm64-v${{ env.APP_VERSION }}.apk.sha256
